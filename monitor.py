@@ -1,4 +1,5 @@
 import os
+import feedparser
 import requests
 
 # 从 GitHub Secrets 中读取配置
@@ -17,51 +18,48 @@ def send_telegram_message(text):
     print(f"发送 Telegram 消息失败: {e}")
 
 
-def check_weibo_api():
-  # 使用一个稳定的备用微博容器接口
-  api_url = f"https://m.weibo.cn/api/container/getIndex?containerid=107603{UID}"
+def check_weibo_rss():
+  # 使用多条备用公开 RSS 线路，轮流请求以确保高可用
+  rss_urls = [
+      f"https://rsshub.app/weibo/user/{UID}",
+      f"https://hub.slarker.me/weibo/user/{UID}",
+  ]
 
-  headers = {
-      "User-Agent": (
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605"
-          ".1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
-      ),
-      "Referer": f"https://m.weibo.cn/u/{UID}",
-      "Accept": "application/json, text/plain, */*",
-  }
+  for rss_url in rss_urls:
+    try:
+      print(f"正在尝试请求 RSS 节点: {rss_url}")
+      # 加上浏览器级别的 User-Agent 防止 RSS 节点自身拦截
+      headers = {
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          )
+      }
+      response = requests.get(rss_url, headers=headers, timeout=15)
+      if response.status_code == 200 and len(response.text) > 100:
+        # 使用 feedparser 解析获取到的 RSS 内容
+        feed = feedparser.parse(response.text)
+        if feed.entries:
+          latest_entry = feed.entries[0]
+          title = latest_entry.get("title", "（无标题）")
+          link = latest_entry.get("link", "")
+          published = latest_entry.get("published", "")
+          guid = latest_entry.get("id", link)
+          print(f"成功通过节点获取到动态: {title[:30]}...")
+          return guid, title, published, link
+    except Exception as e:
+      print(f"节点 {rss_url} 请求出错: {e}")
 
-  try:
-    print(f"正在请求微博 API: {api_url}")
-    response = requests.get(api_url, headers=headers, timeout=10)
-    print(f"请求状态码: {response.status_code}")
-
-    data = response.json()
-    if data.get("ok") == 1:
-      cards = data["data"]["cards"]
-      for card in cards:
-        if card.get("card_type") == 9:
-          mblog = card["mblog"]
-          blog_id = mblog["id"]
-          text = mblog.get("text", "（纯图片或视频微博）")
-          created_at = mblog.get("created_at", "")
-          bid = mblog.get("bid", "")
-          blog_url = f"https://m.weibo.cn/detail/{bid}"
-          return blog_id, text, created_at, blog_url
-    else:
-      print(f"接口返回数据异常: {data}")
-  except Exception as e:
-    print(f"请求微博发生异常: {e}")
-
+  print("所有 RSS 节点均未能获取到有效数据。")
   return None, None, None, None
 
 
 if __name__ == "__main__":
-  print("微博专用 API 监控任务开始...")
-  blog_id, text, created_at, blog_url = check_weibo_api()
+  print("微博稳定 RSS 监控任务开始...")
+  guid, title, published, link = check_weibo_rss()
 
-  if blog_id:
-    print(f"成功获取到最新微博 ID: {blog_id}")
-    msg = f"🚨 <b>微博更新提醒</b>\n\n🕒 时间：{created_at}\n\n{text}\n\n🔗 <a href='{blog_url}'>点击查看原博</a>"
+  if guid:
+    msg = f"🚨 <b>微博更新提醒</b>\n\n🕒 时间：{published}\n\n{title}\n\n🔗 <a href='{link}'>点击查看原博</a>"
     send_telegram_message(msg)
     print("Telegram 通知发送成功！")
   else:
