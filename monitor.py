@@ -1,15 +1,10 @@
 import os
-import time
 import requests
 
 # 从 GitHub Secrets 中读取配置
 BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 CHAT_ID = os.environ.get("TG_CHAT_ID")
 UID = "7627638226"  # 要监控的微博 UID
-
-# GitHub Actions 每次运行时间有限，我们这里设定循环检查 3 次（每次间隔 20 秒）后自动退出，靠定时触发器重复执行
-CHECK_TIMES = 3
-INTERVAL = 20
 
 
 def send_telegram_message(text):
@@ -24,16 +19,25 @@ def send_telegram_message(text):
 
 def check_weibo():
   api_url = f"https://m.weibo.cn/api/container/getIndex?type=uid&value={UID}"
+  # 升级版的移动端请求头，加入 Cookie 占位与更完整的防拦截字段
   headers = {
       "User-Agent": (
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605"
-          ".1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605"
+          ".1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
       ),
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "zh-CN,zh;q=0.9",
       "Referer": f"https://m.weibo.cn/u/{UID}",
+      "X-Requested-With": "XMLHttpRequest",
   }
 
   try:
     response = requests.get(api_url, headers=headers, timeout=10)
+    print(f"微博 API 状态码: {response.status_code}")
+
+    # 打印前 200 个字符看看返回的到底是什么
+    print(f"返回内容预览: {response.text[:200]}")
+
     data = response.json()
 
     if data.get("ok") == 1:
@@ -47,6 +51,8 @@ def check_weibo():
           bid = mblog.get("bid", "")
           blog_url = f"https://m.weibo.cn/detail/{bid}"
           return blog_id, text, created_at, blog_url
+    else:
+      print(f"微博接口返回状态不为1: {data}")
   except Exception as e:
     print(f"检查微博出错: {e}")
   return None, None, None, None
@@ -54,11 +60,6 @@ def check_weibo():
 
 if __name__ == "__main__":
   print("微博监控任务开始...")
-  # 这里可以通过一个简单文件记录上一次的 id（GitHub Actions 每次运行环境是干净的，
-  # 但我们可以抓取最新的一条，或者通过对比实现。为了最简单，我们直接播报当前最新的一条，
-  # 或者配合推送逻辑。如果你希望只看“新”发的，可以看下一步）
-  # 实际上，由于 GitHub Actions 定时触发，我们每次运行只需要抓取最新的一条，
-  # 并判断它是否在短时间内发布，或者直接发出来。
   blog_id, text, created_at, blog_url = check_weibo()
   if blog_id:
     print(f"获取到最新微博 ID: {blog_id}")
@@ -66,5 +67,6 @@ if __name__ == "__main__":
         f"🚨 **微博更新提醒**\n\n发布时间：{created_at}\n\n{text}\n\n🔗"
         f" [点击查看原博]({blog_url})"
     )
-    # 发送通知
     send_telegram_message(msg)
+  else:
+    print("未获取到有效微博。")
