@@ -4,7 +4,7 @@ on:
   # 设置每隔 15 分钟自动运行一次
   schedule:
     - cron: '*/15 * * * *'
-  # 允许你手动在网页上一键点击运行测试
+  # 允许你在网页上一键点击运行测试
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install requests feedparser
 
       - name: Run script
         env:
