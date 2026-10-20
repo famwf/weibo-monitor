@@ -1,11 +1,11 @@
-import json
 import os
 import requests
 
 # 从 GitHub Secrets 中读取配置
 BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 CHAT_ID = os.environ.get("TG_CHAT_ID")
-UID = "7627638226"  # 要监控的微博 UID
+WEIBO_COOKIE = os.environ.get("WEIBO_COOKIE")
+UID = "7627638226"
 LAST_ID_FILE = "last_id.txt"
 
 
@@ -31,9 +31,9 @@ def save_last_id(blog_id):
     f.write(str(blog_id))
 
 
-def check_weibo_web():
-  # 使用微博公开的主页接口，并带上更完整的浏览器模拟特征
-  url = f"https://m.weibo.cn/profile/info?uid={UID}"
+def check_weibo_with_cookie():
+  api_url = f"https://m.weibo.cn/api/container/getIndex?containerid=107603{UID}"
+
   headers = {
       "User-Agent": (
           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605"
@@ -41,25 +41,26 @@ def check_weibo_web():
       ),
       "Referer": f"https://m.weibo.cn/u/{UID}",
       "Accept": "application/json, text/plain, */*",
-      "X-Requested-With": "XMLHttpRequest",
+      "Cookie": f"SUB={WEIBO_COOKIE}",
   }
 
   try:
-    print(f"正在请求微博公开主页信息...")
-    response = requests.get(url, headers=headers, timeout=15)
+    print("正在带 Cookie 请求微博 API...")
+    response = requests.get(api_url, headers=headers, timeout=15)
     print(f"请求状态码: {response.status_code}")
 
     data = response.json()
     if data.get("ok") == 1:
-      # 从主页数据中提取最近的一条微博
-      status = data.get("data", {}).get("status", {})
-      if status:
-        blog_id = str(status.get("id"))
-        text = status.get("text", "（纯图片或视频微博）")
-        created_at = status.get("created_at", "")
-        bid = status.get("bid", "")
-        blog_url = f"https://m.weibo.cn/detail/{bid}"
-        return blog_id, text, created_at, blog_url
+      cards = data["data"]["cards"]
+      for card in cards:
+        if card.get("card_type") == 9:
+          mblog = card["mblog"]
+          blog_id = str(mblog["id"])
+          text = mblog.get("text", "（纯图片或视频微博）")
+          created_at = mblog.get("created_at", "")
+          bid = mblog.get("bid", "")
+          blog_url = f"https://m.weibo.cn/detail/{bid}"
+          return blog_id, text, created_at, blog_url
     else:
       print(f"接口返回数据异常: {data}")
   except Exception as e:
@@ -69,15 +70,15 @@ def check_weibo_web():
 
 
 if __name__ == "__main__":
-  print("微博网页直连监控任务开始...")
-  blog_id, text, created_at, blog_url = check_weibo_web()
+  print("带 Cookie 认证的微博监控任务开始...")
+  blog_id, text, created_at, blog_url = check_weibo_with_cookie()
 
   if blog_id:
     print(f"成功获取到最新微博 ID: {blog_id}")
     last_id = get_last_saved_id()
 
     if blog_id != last_id:
-      print("检测到新微博，准备发送通知...")
+      print("检测到新微博，准备发送 Telegram 通知...")
       msg = f"🚨 <b>微博更新提醒</b>\n\n🕒 时间：{created_at}\n\n{text}\n\n🔗 <a href='{blog_url}'>点击查看原博</a>"
       send_telegram_message(msg)
       save_last_id(blog_id)
@@ -85,4 +86,4 @@ if __name__ == "__main__":
     else:
       print("没有检测到新微博（与上次记录相同）。")
   else:
-    print("未获取到有效内容。")
+    print("未获取到有效内容，请检查 Cookie 或网络响应。")
