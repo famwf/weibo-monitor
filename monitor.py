@@ -14,9 +14,16 @@ def send_telegram_message(text):
   payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
   try:
     response = requests.post(url, json=payload, timeout=10)
-    return response.json()
+    result = response.json()
+    if result.get("ok"):
+      print("Telegram 官方确认：消息发送成功！")
+      return True
+    else:
+      print(f"❌ Telegram 拒绝发送，错误原因: {result}")
+      return False
   except Exception as e:
-    print(f"发送 Telegram 消息失败: {e}")
+    print(f"发送 Telegram 消息异常: {e}")
+    return False
 
 
 def get_last_saved_id():
@@ -77,13 +84,14 @@ if __name__ == "__main__":
     print(f"成功获取到最新微博 ID: {blog_id}")
     last_id = get_last_saved_id()
 
-    if blog_id != last_id:
-      print("检测到新微博，准备发送 Telegram 通知...")
+    # 注意：因为刚才已经把 ID 写入过 last_id.txt 了，
+    # 如果想强制再测试一次推送，可以把下面这行改成 if True:
+    if blog_id != last_id or True:
+      print("准备发送 Telegram 通知...")
       msg = f"🚨 <b>微博更新提醒</b>\n\n🕒 时间：{created_at}\n\n{text}\n\n🔗 <a href='{blog_url}'>点击查看原博</a>"
       send_telegram_message(msg)
       save_last_id(blog_id)
-      print("Telegram 通知发送成功，已更新本地记录！")
     else:
       print("没有检测到新微博（与上次记录相同）。")
   else:
-    print("未获取到有效内容，请检查 Cookie 或网络响应。")
+    print("未获取到有效内容。")
