@@ -1,4 +1,6 @@
+import html
 import os
+import re
 import requests
 
 # 从 GitHub Secrets 中读取配置
@@ -7,6 +9,18 @@ CHAT_ID = os.environ.get("TG_CHAT_ID")
 WEIBO_COOKIE = os.environ.get("WEIBO_COOKIE")
 UID = "7627638226"
 LAST_ID_FILE = "last_id.txt"
+
+
+def clean_html(raw_html):
+  """清洗微博正文中的 HTML 标签，避免 Telegram 解析报错"""
+  if not raw_html:
+    return "（纯图片或视频微博）"
+  # 将常见的换行标签转成换行符
+  text = re.sub(r"<br\s*/?>", "\n", raw_html)
+  # 移除所有其他 HTML 标签
+  text = re.sub(r"<.*?>", "", text)
+  # 转换 HTML 实体（如 &amp; 等）
+  return html.unescape(text).strip()
 
 
 def send_telegram_message(text):
@@ -63,7 +77,8 @@ def check_weibo_with_cookie():
         if card.get("card_type") == 9:
           mblog = card["mblog"]
           blog_id = str(mblog["id"])
-          text = mblog.get("text", "（纯图片或视频微博）")
+          raw_text = mblog.get("text", "")
+          text = clean_html(raw_text)  # 清洗 HTML 标签
           created_at = mblog.get("created_at", "")
           bid = mblog.get("bid", "")
           blog_url = f"https://m.weibo.cn/detail/{bid}"
@@ -84,8 +99,7 @@ if __name__ == "__main__":
     print(f"成功获取到最新微博 ID: {blog_id}")
     last_id = get_last_saved_id()
 
-    # 注意：因为刚才已经把 ID 写入过 last_id.txt 了，
-    # 如果想强制再测试一次推送，可以把下面这行改成 if True:
+    # 强制设为 True 方便你立刻测试推送效果
     if blog_id != last_id or True:
       print("准备发送 Telegram 通知...")
       msg = f"🚨 <b>微博更新提醒</b>\n\n🕒 时间：{created_at}\n\n{text}\n\n🔗 <a href='{blog_url}'>点击查看原博</a>"
