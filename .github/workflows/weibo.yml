@@ -4,7 +4,7 @@ on:
   # 设置每隔 15 分钟自动运行一次
   schedule:
     - cron: '*/15 * * * *'
-  # 允许你在网页上一键点击运行测试
+  # 允许你手动在网页上一键点击运行测试
   workflow_dispatch:
 
 jobs:
@@ -21,11 +21,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests feedparser
+          pip install requests
 
       - name: Run script
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          WEIBO_COOKIE: ${{ secrets.WEIBO_COOKIE }}
         run: |
           python monitor.py
